@@ -24,17 +24,17 @@ This assignment is based on the kernel Kprobe mechanism. Kprobes enable you to d
   - Put a check in your code to make sure you calculate the row/column of a page fault correctly, and that it is within the bounds of your graph. If not, print a debug message so you can fix it instead of causing a segmentation violation in the kernel, and having to restart your CSVB operating system.
 - I wrote a shell script to trace a specific command. The code is simple, but to save you time:
   >#! /bin/bash
-  ># Run command from parameters in background
+  >###### Run command from parameters in background
   >$* &
-  ># Save pid of last background command
+  >###### Save pid of last background command
   >pid=$!
-  ># Install probe, running on the pid specified
+  >###### Install probe, running on the pid specified
   >sudo insmod pf_probe_B.ko tpid=$pid
-  ># wait for the background job to complete
+  >###### wait for the background job to complete
   >wait $pid
-  ># Remove the module
+  >###### Remove the module
   >sudo rmmod pf_probe_B
-  ># Look at the last 50 lines of the console print
+  >###### Look at the last 50 lines of the console print
   >dmesg | tail -50
 
 - Test your scatter plot on at least three different types of target applications, such as kernel compilation (compute and I/O intensive), sysbench (compute intensive), or iperf (network I/O intensive). Look for interesting trends in memory access patterns. Describe your findings in a short report (two or three paragraphs), and be prepared to defend your conclusions in the interview.
