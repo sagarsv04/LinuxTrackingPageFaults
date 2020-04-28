@@ -13,17 +13,17 @@ This assignment is based on the kernel Kprobe mechanism. Kprobes enable you to d
 - Download, build, and run the kprobe examples in https://elixir.bootlin.com/linux/latest/source/samples/kprobes. You can use these as a basis for your coding.
 - Get familiar with the handle_mm_fault() function in the Linux kernel. Get a feel for when this function is invoked, and what it does.
 - Create a kernel module called pf_probe_A that takes the process-ID of an active process as an argument as a module parameter, and prints the virtual addresses that cause page faults to the system log using printk(). Your code should work for any arbitrary target process.
-## Hints:
-- In the architecture that the CSVB machines use, X86-64, when a function is called the first parameters is in the di family of registers (%rdi for 64 bit, %edi for 32 bit, %di for 16 bit, etc.), the second parameter is in the si family of registers, the third in dx, and the fourth in cx. You may assume these conventions hold when your kernel module is executed.
-- In order to find the process ID which caused the page fault, you need to start at the vm area structure, find the memory manager structure that describes the virtual memory, find the canonical owner task structure in the memory manager structure, and find the pid in the task structure.
+  ## Hints:
+  - In the architecture that the CSVB machines use, X86-64, when a function is called the first parameters is in the di family of registers (%rdi for 64 bit, %edi for 32 bit, %di for 16 bit, etc.), the second parameter is in the si family of registers, the third in dx, and the fourth in cx. You may assume these conventions hold when your kernel module is executed.
+  - In order to find the process ID which caused the page fault, you need to start at the vm area structure, find the memory manager structure that describes the virtual memory, find the canonical owner task structure in the memory manager structure, and find the pid in the task structure.
 
 - Create a second kernel module called pf_probe_B that stores the time and address of each page fault related to a specific process instead of printing to the console. Then, when the module is unloaded, print to the console a scatter plot of all the page fault information collected that has time on the X axis, and virtual page number on the Y axis. Scale the plot so that it is 30 lines high and 70 columns wide. Include appropriate labels and titles.
-## Hints:
-- You may assume each page is 4K large. That means offset in the page takes up the rightmost 12 bits of the address.
-- Code in the Linux kernel will not do 64 bit division. Use google to figure out how to divide 64 bit fields (like addresses) in the kernel in order to scale your plot.
-- Put a check in your code to make sure you calculate the row/column of a page fault correctly, and that it is within the bounds of your graph. If not, print a debug message so you can fix it instead of causing a segmentation violation in the kernel, and having to restart your CSVB operating system.
+  ## Hints:
+  - You may assume each page is 4K large. That means offset in the page takes up the rightmost 12 bits of the address.
+  - Code in the Linux kernel will not do 64 bit division. Use google to figure out how to divide 64 bit fields (like addresses) in the kernel in order to scale   your plot.
+  - Put a check in your code to make sure you calculate the row/column of a page fault correctly, and that it is within the bounds of your graph. If not, print a debug message so you can fix it instead of causing a segmentation violation in the kernel, and having to restart your CSVB operating system.
 - I wrote a shell script to trace a specific command. The code is simple, but to save you time:
-  #! /bin/bash
+  >#! /bin/bash
   # Run command from parameters in background
   $* &
   # Save pid of last background command
