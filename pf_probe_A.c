@@ -32,6 +32,7 @@ MODULE_VERSION("1.0");
 
 static pid_t process_id = 0;
 static int probe_open_counter = 0;
+static int pre_handler_counter = 0;
 static int probe_ret = -2;
 static int data_buffer_idx = -1;
 struct proc_dir_entry *dev_file_entry;
@@ -52,7 +53,6 @@ module_param_string(symbol, symbol, sizeof(symbol), 0644);
 
 
 /* Function Declarations */
-static int page_fault_handler(struct mm_struct *, struct vm_area_struct *, unsigned long, unsigned int);
 static int handler_pre(struct kprobe *, struct pt_regs *);
 static void handler_post(struct kprobe *, struct pt_regs *, unsigned long);
 static int handler_fault(struct kprobe *, struct pt_regs *, int);
@@ -67,23 +67,12 @@ static void get_fault_info(char *, loff_t *);
 static void dev_cleanup(void);
 
 
-/* For each probe you need to allocate a kprobe structure */
-static struct jprobe dev_jp = {
-	.entry						= page_fault_handler,
-	.kp = {
-		.symbol_name		= symbol,
-		.pre_handler 		= handler_pre,
-		.post_handler 	= handler_post,
-		.fault_handler 	= handler_fault,
-	},
+static struct kprobe dev_kp = {
+	.symbol_name			= symbol,
+	.pre_handler			= handler_pre,
+	.post_handler			= handler_post,
+	.fault_handler		= handler_fault,
 };
-
-// static struct kprobe dev_kp = {
-// 	.symbol_name = symbol,
-// 	.pre_handler = handler_pre,
-// 	.post_handler = handler_post,
-// 	.fault_handler = handler_fault,
-// };
 
 
 static struct file_operations dev_file_op = {
@@ -170,6 +159,7 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
+			pre_handler_counter += 1;
 			printk(KERN_INFO "DEV Module: <%s> CONFIG_X86 pre_handler: p->addr = 0x%p, ip = %lx, flags = 0x%lx\n", p->symbol_name, p->addr, regs->ip, regs->flags);
 			// pr_info("<%s> CONFIG_X86 pre_handler: p->addr = 0x%p, ip = %lx, flags = 0x%lx\n", p->symbol_name, p->addr, regs->ip, regs->flags);
 		#endif
@@ -204,7 +194,18 @@ static void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long f
 /* fault_handler: this is called if an exception is generated for any instruction within the pre- or post-handler */
 static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 
+	struct timespec current_time;
+
 	if (current->pid == process_id) {
+		if(data_buffer_idx == PROBE_BUFFER_SIZE-1) {
+			data_buffer_idx = 0;
+		}
+		else {
+			data_buffer_idx += 1;
+		}
+		current_time = current_kernel_time();
+		page_fault_data_buffer[data_buffer_idx].address = (unsigned long)p->addr;
+		page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
 		// pr_info("fault_handler: p->addr = 0x%p, trap #%dn", p->addr, trapnr);
 		printk(KERN_ALERT "DEV Module: <%s> fault_handler: p->addr = 0x%p, trap #%dn\n", p->symbol_name, p->addr, trapnr);
 	}
@@ -219,32 +220,6 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 }
 
 
-static int page_fault_handler(struct mm_struct *mm, struct vm_area_struct *vma, unsigned long address, unsigned int flags) {
-
-	struct timespec current_time;
-
-	if(current->pid == process_id)
-	{
-		if(data_buffer_idx == PROBE_BUFFER_SIZE-1) {
-			data_buffer_idx = 0;
-		}
-		else {
-			data_buffer_idx += 1;
-		}
-		current_time = current_kernel_time();
-		page_fault_data_buffer[data_buffer_idx].address = address;
-		page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
-		printk(KERN_INFO "DEV Module: Process %d has Page Fault at Address %lx\n", current->pid, address);
-	}
-	else {
-		if (PROBE_DEBUG) {
-			printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
-		}
-	}
-	jprobe_return();
-	return 0;
-}
-
 static void dev_cleanup(void) {
 
 	if (dev_file_entry != NULL) {
@@ -253,8 +228,8 @@ static void dev_cleanup(void) {
 	}
 
 	if (probe_ret >= 0) {
-		unregister_jprobe(&dev_jp);
-		printk(KERN_ALERT "DEV Module: Probe at %p Unregistered\n", dev_jp.kp.addr);
+		unregister_kprobe(&dev_kp);
+		printk(KERN_ALERT "DEV Module: Probe at %p Unregistered\n", dev_kp.addr);
 	}
 }
 
@@ -270,14 +245,14 @@ static int __init pf_probe_init(void) {
 		printk(KERN_INFO "DEV Module: Created File Entry : /proc/%s, for User Space Program\n", PROBE_NAME);
 	}
 
-	probe_ret = register_jprobe(&dev_jp);
+	probe_ret = register_kprobe(&dev_kp);
 	if (probe_ret < 0) {
 		printk(KERN_ALERT "DEV Module: Register Probe Failed Return Code %d\n", probe_ret);
 		dev_cleanup();
 		return probe_ret;
 	}
 	else {
-		printk(KERN_ALERT "DEV Module: Registered Probe for PID %d at Address %p\n", process_id, dev_jp.kp.addr);
+		printk(KERN_ALERT "DEV Module: Registered Probe for PID %d at Address %p\n", process_id, dev_kp.addr);
 		if (PROBE_DEBUG) {
 			printk(KERN_INFO "DEV Module: %s Probe Installed ...\n", PROBE_NAME);
 		}
@@ -287,6 +262,7 @@ static int __init pf_probe_init(void) {
 
 
 static void __exit pf_probe_exit(void) {
+	printk(KERN_ALERT "DEV Module: Pre Handler Count for PID %d is %d\n", process_id, pre_handler_counter);
 	dev_cleanup();
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "%s Module: Removed ...\n", PROBE_NAME);
