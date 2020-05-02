@@ -17,5 +17,9 @@ State University of New York, Binghamton
 
 ## Run :
 
+sudo insmod pf_probe_A.ko process_id=<PID>
+
+sudo insmod pf_probe_A.ko process_id=4
+
 
 ## Note :

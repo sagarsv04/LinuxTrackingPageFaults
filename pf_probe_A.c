@@ -10,8 +10,11 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/kprobes.h>
-#include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/ktime.h>
+#include <linux/memory.h>
+#include <linux/memcontrol.h>
+#include <linux/proc_fs.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Sagar Vishwakarma");
@@ -20,19 +23,19 @@ MODULE_VERSION("1.0");
 
 #define PROBE_DEBUG 0
 
-#define PROBE_NAME "pf_probe_a"
+#define PROBE_NAME "pf_probe_A"
 
 #define PROBE_STR_LEN 128
 #define PROBE_BUFFER_SIZE	500
 #define MAX_SYMBOL_LEN	64
-// static char symbol[MAX_SYMBOL_LEN] = "_do_fork";
-static char symbol[MAX_SYMBOL_LEN] = "pf_probe_a";
 
-static pid_t process_id = -1;
-// static int probe_buffer_counter = 0;
-// static int probe_position = 0;
+
+static pid_t process_id = 0;
 static int probe_open_counter = 0;
-static int major_number;
+static int probe_ret = -2;
+static int data_buffer_idx = -1;
+struct proc_dir_entry *dev_file_entry;
+
 
 typedef struct page_fault_data {
 	unsigned long address;
@@ -40,34 +43,47 @@ typedef struct page_fault_data {
 } page_fault_data;
 
 
-module_param(process_id, int, 0);
-// module_param_string(PROBE_NAME, PROBE_NAME, sizeof(PROBE_NAME), 0644);
-module_param_string(symbol, symbol, sizeof(symbol), 0644);
-
+static char symbol[MAX_SYMBOL_LEN] = "handle_mm_fault";
 static page_fault_data page_fault_data_buffer[PROBE_BUFFER_SIZE];
 
 
+module_param(process_id, int, 0);
+module_param_string(symbol, symbol, sizeof(symbol), 0644);
+
 
 /* Function Declarations */
+static int page_fault_handler(struct mm_struct *, struct vm_area_struct *, unsigned long, unsigned int);
 static int handler_pre(struct kprobe *, struct pt_regs *);
 static void handler_post(struct kprobe *, struct pt_regs *, unsigned long);
 static int handler_fault(struct kprobe *, struct pt_regs *, int);
 
 
 static int dev_open(struct inode *, struct file *);
-static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static int dev_close(struct inode *, struct file *);
+static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
+
 
 static void get_fault_info(char *, loff_t *);
+static void dev_cleanup(void);
 
 
 /* For each probe you need to allocate a kprobe structure */
-static struct kprobe dev_kp = {
-	.symbol_name	= PROBE_NAME,
-	.pre_handler = handler_pre,
-	.post_handler = handler_post,
-	.fault_handler = handler_fault,
+static struct jprobe dev_jp = {
+	.entry						= page_fault_handler,
+	.kp = {
+		.symbol_name		= symbol,
+		.pre_handler 		= handler_pre,
+		.post_handler 	= handler_post,
+		.fault_handler 	= handler_fault,
+	},
 };
+
+// static struct kprobe dev_kp = {
+// 	.symbol_name = symbol,
+// 	.pre_handler = handler_pre,
+// 	.post_handler = handler_post,
+// 	.fault_handler = handler_fault,
+// };
 
 
 static struct file_operations dev_file_op = {
@@ -90,8 +106,7 @@ static void get_fault_info(char *message, loff_t *offset) {
 		strcpy(message, "EXIT_CODE\n");
 	}
 	else {
-		// strcpy(message, page_fault_data_buffer[skip_node])
-		sprintf(message, "PID = %8d  Page Fault at Address 0x%lx at Time %ld\n", process_id, page_fault_data_buffer[skip_node].address, page_fault_data_buffer[skip_node].time);
+		sprintf(message, "PID = %8d Page Fault at Address 0x%lx at Time %ld\n", process_id, page_fault_data_buffer[skip_node].address, page_fault_data_buffer[skip_node].time);
 		*offset += 1;
 	}
 }
@@ -135,15 +150,16 @@ static ssize_t dev_read(struct file *pfile, char __user *buffer, size_t length, 
 	int message_len = 0;
 	pid_t pid;
 
+	if (PROBE_DEBUG) {
+		printk(KERN_INFO "DEV Module: Process %d has called %s function with Offset %lld\n", pid, __FUNCTION__, *offset);
+	}
+
 	pid = current->pid;
 	get_fault_info(message, offset);
 	message_len = strlen(message);
 	errors = copy_to_user(buffer, message, message_len);
-	if (PROBE_DEBUG) {
-		printk(KERN_INFO "DEV Module: Process %d has called %s function with Offset %lld\n", pid, __FUNCTION__, *offset);
-		if (errors != 0) {
-			printk(KERN_INFO "DEV Module: Failed to Copy Fault Info to Process %d with Offset %lld\n", pid, *offset);
-		}
+	if (errors != 0) {
+		printk(KERN_INFO "DEV Module: Failed to Copy Fault Info to Process %d with Offset %lld\n", pid, *offset);
 	}
 	return errors == 0 ? message_len : -EFAULT;
 }
@@ -152,30 +168,17 @@ static ssize_t dev_read(struct file *pfile, char __user *buffer, size_t length, 
 /* kprobe pre_handler: called just before the probed instruction is executed */
 static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 
-	#ifdef CONFIG_X86
-		pr_info("<%s> CONFIG_X86 pre_handler: p->addr = 0x%p, ip = %lx, flags = 0x%lx\n",
-							p->symbol_name, p->addr, regs->ip, regs->flags);
-	#endif
-
-	#ifdef CONFIG_PPC
-		pr_info("<%s> CONFIG_PPC pre_handler: p->addr = 0x%p, nip = 0x%lx, msr = 0x%lx\n",
-							p->symbol_name, p->addr, regs->nip, regs->msr);
-	#endif
-
-	#ifdef CONFIG_MIPS
-		pr_info("<%s> CONFIG_MIPS pre_handler: p->addr = 0x%p, epc = 0x%lx, status = 0x%lx\n",
-							p->symbol_name, p->addr, regs->cp0_epc, regs->cp0_status);
-	#endif
-
-	#ifdef CONFIG_ARM64
-		pr_info("<%s> CONFIG_ARM64 pre_handler: p->addr = 0x%p, pc = 0x%lx, pstate = 0x%lx\n",
-							p->symbol_name, p->addr, (long)regs->pc, (long)regs->pstate);
-	#endif
-
-	#ifdef CONFIG_S390
-		pr_info("<%s> CONFIG_S390 pre_handler: p->addr, 0x%p, ip = 0x%lx, flags = 0x%lx\n",
-							p->symbol_name, p->addr, regs->psw.addr, regs->flags);
-	#endif
+	if (current->pid == process_id) {
+		#ifdef CONFIG_X86
+			printk(KERN_INFO "DEV Module: <%s> CONFIG_X86 pre_handler: p->addr = 0x%p, ip = %lx, flags = 0x%lx\n", p->symbol_name, p->addr, regs->ip, regs->flags);
+			// pr_info("<%s> CONFIG_X86 pre_handler: p->addr = 0x%p, ip = %lx, flags = 0x%lx\n", p->symbol_name, p->addr, regs->ip, regs->flags);
+		#endif
+	}
+	else {
+		if (PROBE_DEBUG) {
+			printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
+		}
+	}
 	/* A dump_stack() here will give a stack backtrace */
 	return 0;
 }
@@ -184,77 +187,107 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 /* kprobe post_handler: called after the probed instruction is executed */
 static void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long flags) {
 
-	#ifdef CONFIG_X86
-		pr_info("<%s> CONFIG_X86 post_handler: p->addr = 0x%p, flags = 0x%lx\n",
-							p->symbol_name, p->addr, regs->flags);
-	#endif
-
-	#ifdef CONFIG_PPC
-		pr_info("<%s> CONFIG_PPC post_handler: p->addr = 0x%p, msr = 0x%lx\n",
-							p->symbol_name, p->addr, regs->msr);
-	#endif
-
-	#ifdef CONFIG_MIPS
-		pr_info("<%s> CONFIG_MIPS post_handler: p->addr = 0x%p, status = 0x%lx\n",
-							p->symbol_name, p->addr, regs->cp0_status);
-	#endif
-
-	#ifdef CONFIG_ARM64
-		pr_info("<%s> CONFIG_ARM64 post_handler: p->addr = 0x%p, pstate = 0x%lx\n",
-							p->symbol_name, p->addr, (long)regs->pstate);
-	#endif
-
-	#ifdef CONFIG_S390
-		pr_info("<%s> CONFIG_S390 post_handler: p->addr, 0x%p, flags = 0x%lx\n",
-							p->symbol_name, p->addr, regs->flags);
-	#endif
+	if (current->pid == process_id) {
+		#ifdef CONFIG_X86
+			printk(KERN_INFO "DEV Module: <%s> CONFIG_X86 post_handler: p->addr = 0x%p, flags = 0x%lx\n", p->symbol_name, p->addr, regs->flags);
+			// pr_info("<%s> CONFIG_X86 post_handler: p->addr = 0x%p, flags = 0x%lx\n", p->symbol_name, p->addr, regs->flags);
+		#endif
+	}
+	else {
+		if (PROBE_DEBUG) {
+			printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
+		}
+	}
 }
 
 
-/*
- * fault_handler: this is called if an exception is generated for any
- * instruction within the pre- or post-handler, or when Kprobes
- * single-steps the probed instruction.
- */
+/* fault_handler: this is called if an exception is generated for any instruction within the pre- or post-handler */
 static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 
-	pr_info("fault_handler: p->addr = 0x%p, trap #%dn", p->addr, trapnr);
+	if (current->pid == process_id) {
+		// pr_info("fault_handler: p->addr = 0x%p, trap #%dn", p->addr, trapnr);
+		printk(KERN_ALERT "DEV Module: <%s> fault_handler: p->addr = 0x%p, trap #%dn\n", p->symbol_name, p->addr, trapnr);
+	}
+	else {
+		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
+		if (PROBE_DEBUG) {
+			;
+		}
+	}
 	/* Return 0 because we don't handle the fault. */
 	return 0;
 }
 
 
-static int __init pf_probe_init(void) {
+static int page_fault_handler(struct mm_struct *mm, struct vm_area_struct *vma, unsigned long address, unsigned int flags) {
 
-	int ret;
+	struct timespec current_time;
 
-	major_number = register_chrdev(0, PROBE_NAME, &dev_file_op);
-	if (major_number < 0) {
-		printk(KERN_ALERT "DEV Module: Failed to register a major number\n");
-		return major_number;
+	if(current->pid == process_id)
+	{
+		if(data_buffer_idx == PROBE_BUFFER_SIZE-1) {
+			data_buffer_idx = 0;
+		}
+		else {
+			data_buffer_idx += 1;
+		}
+		current_time = current_kernel_time();
+		page_fault_data_buffer[data_buffer_idx].address = address;
+		page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+		printk(KERN_INFO "DEV Module: Process %d has Page Fault at Address %lx\n", current->pid, address);
 	}
 	else {
-		printk(KERN_INFO "DEV Module: Dev Page Fault Driver Registered with major number %d\n", major_number);
+		if (PROBE_DEBUG) {
+			printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
+		}
+	}
+	jprobe_return();
+	return 0;
+}
+
+static void dev_cleanup(void) {
+
+	if (dev_file_entry != NULL) {
+		remove_proc_entry(PROBE_NAME,NULL);
+		printk(KERN_INFO "DEV Module: Removed File Entry : /proc/%s\n", PROBE_NAME);
 	}
 
-	ret = register_kprobe(&dev_kp);
-	if (ret < 0) {
-		printk(KERN_ALERT "DEV Module: Register KPROBE Failed Return Code %d\n", ret);
-		return ret;
+	if (probe_ret >= 0) {
+		unregister_jprobe(&dev_jp);
+		printk(KERN_ALERT "DEV Module: Probe at %p Unregistered\n", dev_jp.kp.addr);
 	}
-	printk(KERN_ALERT "DEV Module: Registered KPROBE for PID %d at Address %p\n", process_id, dev_kp.addr);
-	if (PROBE_DEBUG) {
-		printk(KERN_INFO "DEV Module: %s Installed ...\n", PROBE_NAME);
+}
+
+
+static int __init pf_probe_init(void) {
+
+	dev_file_entry = proc_create(PROBE_NAME, 0, NULL, &dev_file_op);
+	if (dev_file_entry == NULL) {
+		printk(KERN_ALERT "DEV Module: Failed to Create File Entry for %s\n", PROBE_NAME);
+		return -EFAULT;
+	}
+	else {
+		printk(KERN_INFO "DEV Module: Created File Entry : /proc/%s, for User Space Program\n", PROBE_NAME);
+	}
+
+	probe_ret = register_jprobe(&dev_jp);
+	if (probe_ret < 0) {
+		printk(KERN_ALERT "DEV Module: Register Probe Failed Return Code %d\n", probe_ret);
+		dev_cleanup();
+		return probe_ret;
+	}
+	else {
+		printk(KERN_ALERT "DEV Module: Registered Probe for PID %d at Address %p\n", process_id, dev_jp.kp.addr);
+		if (PROBE_DEBUG) {
+			printk(KERN_INFO "DEV Module: %s Probe Installed ...\n", PROBE_NAME);
+		}
 	}
 	return 0;
 }
 
 
 static void __exit pf_probe_exit(void) {
-
-	unregister_chrdev(major_number, PROBE_NAME);
-	unregister_kprobe(&dev_kp);
-	pr_info("kprobe at %p unregistered\n", dev_kp.addr);
+	dev_cleanup();
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "%s Module: Removed ...\n", PROBE_NAME);
 	}

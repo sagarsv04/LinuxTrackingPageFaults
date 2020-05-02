@@ -26,7 +26,8 @@
 #include <linux/limits.h>
 #include <linux/sched.h>
 
-static char func_name[NAME_MAX] = "_do_fork";
+// static char func_name[NAME_MAX] = "_do_fork";
+static char func_name[NAME_MAX] = "handle_mm_fault";
 module_param_string(func, func_name, NAME_MAX, S_IRUGO);
 MODULE_PARM_DESC(func, "Function to kretprobe; this module will report the"
 			" function's execution time");
@@ -46,6 +47,10 @@ static int entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 
 	data = (struct my_data *)ri->data;
 	data->entry_stamp = ktime_get();
+
+	pr_info("%s entry PID %d to execute\n",
+			func_name, current->pid);
+
 	return 0;
 }
 
@@ -63,8 +68,8 @@ static int ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 
 	now = ktime_get();
 	delta = ktime_to_ns(ktime_sub(now, data->entry_stamp));
-	pr_info("%s returned %lu and took %lld ns to execute\n",
-			func_name, retval, (long long)delta);
+	pr_info("%s returned %lu and took %lld ns PID %d to execute\n",
+			func_name, retval, (long long)delta, current->pid);
 	return 0;
 }
 
