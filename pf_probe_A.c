@@ -27,7 +27,7 @@ MODULE_VERSION("1.0");
 #define PROBE_NAME "pf_probe_A"
 
 #define PROBE_STR_LEN 128
-#define PROBE_BUFFER_SIZE	500
+#define PROBE_BUFFER_SIZE	1000
 #define MAX_SYMBOL_LEN	64
 
 

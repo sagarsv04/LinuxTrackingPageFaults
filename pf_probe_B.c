@@ -23,11 +23,12 @@ MODULE_VERSION("1.0");
 
 #define PROBE_DEBUG 0
 #define PROBE_PRINT 0 // off while submiting the code
+#define PROBE_CONT_STORE 0
 
 #define PROBE_NAME "pf_probe_B"
 
 #define PROBE_STR_LEN 128
-#define PROBE_BUFFER_SIZE	500
+#define PROBE_BUFFER_SIZE	1000
 #define MAX_SYMBOL_LEN	64
 
 
@@ -163,23 +164,35 @@ static ssize_t dev_read(struct file *pfile, char __user *buffer, size_t length, 
 /* kprobe pre_handler: called just before the probed instruction is executed */
 static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 
-	struct timespec current_time;
+	// struct timespec current_time;
+	ktime_t current_time;
 
 	if (current->pid == process_id) {
 
 		#ifdef CONFIG_X86
-
-			if(data_buffer_idx == PROBE_BUFFER_SIZE-1) {
-				data_buffer_idx = 0;
+			// current_time = current_kernel_time();
+			current_time = ktime_get();
+			if (PROBE_CONT_STORE) {
+				if(data_buffer_idx == PROBE_BUFFER_SIZE) {
+					data_buffer_idx = 0;
+				}
+				else {
+					page_fault_data_buffer[data_buffer_idx].address = regs->si;
+					// page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+					page_fault_data_buffer[data_buffer_idx].time = (long)ktime_to_ns(current_time);
+					data_buffer_idx += 1;
+				}
 			}
 			else {
-				data_buffer_idx += 1;
+				if(data_buffer_idx != PROBE_BUFFER_SIZE) {
+					page_fault_data_buffer[data_buffer_idx].address = regs->si;
+					// page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+					page_fault_data_buffer[data_buffer_idx].time = (long)ktime_to_ns(current_time);
+					data_buffer_idx += 1;
+				}
 			}
-			current_time = current_kernel_time();
-			page_fault_data_buffer[data_buffer_idx].address = regs->si;
-			page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
 			if (PROBE_PRINT) {
-				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
+				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, (long)ktime_to_ns(current_time));
 			}
 		#endif
 	}
@@ -256,7 +269,11 @@ static void dev_print_chart(void) {
 	char addr_str[30];
 	long addr_array[30];
 	long time_array[70];
+	long max_addr_lng;
+	long min_addr_lng;
 	long addr_lng;
+	long addr_scale;
+	long time_scale;
 
 	int row;
 	int col;
@@ -290,10 +307,15 @@ static void dev_print_chart(void) {
 			}
 		}
 	}
-	printk(KERN_ALERT "DEV Module: Pid :: %8d, vertual->addr range :: %lx - %lx, time range :: %ld - %ld\n", process_id, min_address, max_address, min_time, max_time);
+	printk(KERN_ALERT "DEV Module: Hex Info :: pid = %8d, addr range = %lx - %lx, time range = %ld - %ld\n", process_id, min_address, max_address, min_time, max_time);
 
 	sprintf(addr_str, "%lx", max_address);
-	kstrtol(addr_str, 16, &addr_lng);
+	kstrtol(addr_str, 16, &max_addr_lng);
+
+	sprintf(addr_str, "%lx", min_address);
+	kstrtol(addr_str, 16, &min_addr_lng);
+
+	printk(KERN_INFO "DEV Module: Dec Info :: pid = %8d, addr range = %ld - %ld, time range = %ld - %ld\n", process_id, min_addr_lng, max_addr_lng, min_time, max_time);
 
 	for(idx = 0; idx < 30; idx++) {
 		for(jdx = 0; jdx < 71; jdx++) {
@@ -306,15 +328,17 @@ static void dev_print_chart(void) {
 		}
 	}
 
+	addr_scale = (max_addr_lng - min_addr_lng)/30;
 	for (row = 0; row < 30; row++) {
-		addr_array[row] = addr_lng/(row+1);
+		addr_array[row] = (max_addr_lng-(addr_scale*row));
 	}
+	time_scale = (max_time - min_time)/70;
 	for (col = 0; col < 71; col++) {
 		if (col == 70) {
 			char_x_axis[col] = '\0';
 		}
 		else {
-			time_array[col] = max_time/(col+1);
+			time_array[col] = (max_time-(time_scale*col));
 			char_x_axis[col] = '_';
 		}
 	}
@@ -328,10 +352,10 @@ static void dev_print_chart(void) {
 	}
 
 	for(idx = 0; idx < 30; idx++) {
-		printk(KERN_INFO "%10ld | %s\n", addr_array[idx], char_array[idx]);
+		printk(KERN_INFO "%20ld | %s\n", addr_array[idx], char_array[idx]);
 	}
-	printk(KERN_INFO "%10d # %s\n", 0, char_x_axis);
-	printk(KERN_INFO "%10d # %ld\t %ld\t %ld\t %ld\t %ld\n", 0, time_array[0], time_array[15], time_array[30], time_array[50], time_array[69]);
+	printk(KERN_INFO "%20d # %s\n", 0, char_x_axis);
+	printk(KERN_INFO "%20d # %ld\t %ld\t %ld\t %ld\t %ld\n", 0, time_array[0], time_array[15], time_array[30], time_array[50], time_array[69]);
 }
 
 
