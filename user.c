@@ -17,7 +17,7 @@
 
 
 #define DRIVER_NAME "Dev Page Fault Driver"
-#define DRIVER_PATH "/proc/pf_probe_A"
+#define DRIVER_PATH "/proc/pf_probe_B"
 
 #define USER_SLEEP 10
 

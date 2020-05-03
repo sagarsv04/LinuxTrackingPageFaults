@@ -22,6 +22,7 @@ MODULE_DESCRIPTION("A Simple Linux Page Faults Tracking Device");
 MODULE_VERSION("1.0");
 
 #define PROBE_DEBUG 0
+#define PROBE_PRINT 1 // on while submiting the code
 
 #define PROBE_NAME "pf_probe_A"
 
@@ -107,7 +108,9 @@ static int dev_open(struct inode *pinode, struct file *pfile) {
 	struct task_struct *task = current;
 	pid = task->pid;
 	probe_open_counter += 1;
-	printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	if (PROBE_PRINT) {
+		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	}
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "DEV Module: Device opened %d Times\n", probe_open_counter);
 	}
@@ -122,7 +125,9 @@ static int dev_close(struct inode *pinode, struct file *pfile) {
 	struct task_struct *task = current;
 	pid = task->pid;
 	probe_open_counter -= 1;
-	printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	if (PROBE_PRINT) {
+		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	}
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "DEV Module: Device opened %d Times\n", probe_open_counter);
 	}
@@ -171,7 +176,9 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 			current_time = current_kernel_time();
 			page_fault_data_buffer[data_buffer_idx].address = regs->si;
 			page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
-			printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
+			if (PROBE_PRINT) {
+				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
+			}
 		#endif
 	}
 	else {
@@ -189,7 +196,9 @@ static void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long f
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
-			printk(KERN_INFO "DEV Module: <%s> post_handler:  pid = %8d, vertual->addr = %lx, flags = 0x%lx\n", p->symbol_name, current->pid, regs->si, regs->flags);
+			if (PROBE_PRINT) {
+				printk(KERN_INFO "DEV Module: <%s> post_handler:  pid = %8d, vertual->addr = %lx, flags = 0x%lx\n", p->symbol_name, current->pid, regs->si, regs->flags);
+			}
 		#endif
 	}
 	else {
@@ -205,13 +214,14 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
-			printk(KERN_ALERT "DEV Module: <%s> fault_handler: pid = %8d, vertual->addr = %lx, trap #%dn\n", p->symbol_name, current->pid, regs->si, trapnr);
+			if (PROBE_PRINT) {
+				printk(KERN_ALERT "DEV Module: <%s> fault_handler: pid = %8d, vertual->addr = %lx, trap #%dn\n", p->symbol_name, current->pid, regs->si, trapnr);
+			}
 		#endif
 	}
 	else {
-		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
 		if (PROBE_DEBUG) {
-			;
+			printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
 		}
 	}
 	/* Return 0 because we don't handle the fault. */
