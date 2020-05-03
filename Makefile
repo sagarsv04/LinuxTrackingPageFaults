@@ -15,7 +15,8 @@ obj-m += pf_probe_A.o
 all:
 	make -C $(KDIR) M=$(PWD) modules
 	# $(CC) user.c $(EXTRA_CFLAGS) -o user
+	$(CC) major_fault.c $(EXTRA_CFLAGS) -o major_fault
 
 clean:
 	make -C $(KDIR) M=$(PWD) clean
-	rm -f *.o *.d
+	rm -f *.o *.d major_fault

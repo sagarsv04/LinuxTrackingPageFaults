@@ -42,6 +42,7 @@
 *.idb
 *.pdb
 *.log
+major_fault
 
 # Kernel Module Compile Results
 *.mod*
