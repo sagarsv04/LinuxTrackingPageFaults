@@ -9,12 +9,12 @@ def plot_page_fault(address_array, time_array, process_id):
 	# time on x axis
 	fig1 = plt.figure(1)
 	ax1 = fig1.gca()
-	ax1.scatter(time_array, address_array, s=25)
-	ax1.set_aspect('equal')
+	ax1.scatter(time_array, address_array, s=5)
+	# ax1.set_aspect('equal')
 	plt.title("Page Fault Plot For Process {0}".format(process_id))
 	plt.xlabel("Time in nsec")
 	plt.ylabel("Virtual Address")
-	plt.tight_layout()
+	# plt.tight_layout()
 	plt.show()
 	return 0
 
@@ -23,7 +23,6 @@ def find_nearest_idx(array, value):
 	array = np.asarray(array)
 	idx = (np.abs(array - value)).argmin()
 	return idx
-
 
 
 def print_page_fault(address_array, time_array, process_id):
@@ -76,7 +75,7 @@ def print_page_fault(address_array, time_array, process_id):
 
 
 def process_file(file_path):
-	# file_path = "./pf_probe_A.log"
+	# file_path = "./pf_probe_B.log"
 	lines = None
 	if os.path.exists(file_path):
 		with open(file_path) as fd:
@@ -96,8 +95,9 @@ def process_file(file_path):
 					process_id = int(line_split[-9])
 		address_array = np.array(address_list)
 		time_array = np.array(time_list)
+		# time_array.max() - time_array.min()
 		plot_page_fault(address_array, time_array, process_id)
-		print_page_fault(address_array, time_array, process_id)
+		# print_page_fault(address_array, time_array, process_id)
 	else:
 		print("File {0} doesn't exists ...".format(file_path))
 	return 0
@@ -115,7 +115,3 @@ def main():
 
 if __name__ == "__main__":
 	main()
-
-71 seperators
-
-7|3|2|1|1|1|1|9|8|7|7|6|6|5|5|4|4|4|4|3|3|3|3|3|3|3|2|2|2|2|2|2|2|2|2|2|2|2|2|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1|1
