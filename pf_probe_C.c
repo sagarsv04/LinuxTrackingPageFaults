@@ -22,11 +22,13 @@ MODULE_DESCRIPTION("A Simple Linux Page Faults Tracking Device");
 MODULE_VERSION("1.0");
 
 #define PROBE_DEBUG 0
+#define PROBE_PRINT 0 // off while submiting the code
+#define PROBE_CONT_STORE 0
 
 #define PROBE_NAME "pf_probe_C"
 
 #define PROBE_STR_LEN 128
-#define PROBE_BUFFER_SIZE	500
+#define PROBE_BUFFER_SIZE	1000
 #define MAX_SYMBOL_LEN	64
 
 
@@ -63,6 +65,8 @@ static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 
 
 static void get_fault_info(char *, loff_t *);
+static void dev_print_chart(void);
+static int find_nearest_index(long *, long, int);
 static void dev_cleanup(void);
 
 
@@ -107,7 +111,9 @@ static int dev_open(struct inode *pinode, struct file *pfile) {
 	struct task_struct *task = current;
 	pid = task->pid;
 	probe_open_counter += 1;
-	printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	if (PROBE_PRINT) {
+		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	}
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "DEV Module: Device opened %d Times\n", probe_open_counter);
 	}
@@ -122,7 +128,9 @@ static int dev_close(struct inode *pinode, struct file *pfile) {
 	struct task_struct *task = current;
 	pid = task->pid;
 	probe_open_counter -= 1;
-	printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	if (PROBE_PRINT) {
+		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", pid, __FUNCTION__);
+	}
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "DEV Module: Device opened %d Times\n", probe_open_counter);
 	}
@@ -156,22 +164,36 @@ static ssize_t dev_read(struct file *pfile, char __user *buffer, size_t length, 
 /* kprobe pre_handler: called just before the probed instruction is executed */
 static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 
-	struct timespec current_time;
+	// struct timespec current_time;
+	ktime_t current_time;
 
 	if (current->pid == process_id) {
 
 		#ifdef CONFIG_X86
-
-			if(data_buffer_idx == PROBE_BUFFER_SIZE-1) {
-				data_buffer_idx = 0;
+			// current_time = current_kernel_time();
+			current_time = ktime_get();
+			if (PROBE_CONT_STORE) {
+				if(data_buffer_idx == PROBE_BUFFER_SIZE) {
+					data_buffer_idx = 0;
+				}
+				else {
+					page_fault_data_buffer[data_buffer_idx].address = regs->si;
+					// page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+					page_fault_data_buffer[data_buffer_idx].time = (long)ktime_to_ns(current_time);
+					data_buffer_idx += 1;
+				}
 			}
 			else {
-				data_buffer_idx += 1;
+				if(data_buffer_idx != PROBE_BUFFER_SIZE) {
+					page_fault_data_buffer[data_buffer_idx].address = regs->si;
+					// page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+					page_fault_data_buffer[data_buffer_idx].time = (long)ktime_to_ns(current_time);
+					data_buffer_idx += 1;
+				}
 			}
-			current_time = current_kernel_time();
-			page_fault_data_buffer[data_buffer_idx].address = regs->si;
-			page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
-			printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
+			if (PROBE_PRINT) {
+				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, (long)ktime_to_ns(current_time));
+			}
 		#endif
 	}
 	else {
@@ -189,7 +211,9 @@ static void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long f
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
-			printk(KERN_INFO "DEV Module: <%s> post_handler:  pid = %8d, vertual->addr = %lx, flags = 0x%lx\n", p->symbol_name, current->pid, regs->si, regs->flags);
+			if (PROBE_PRINT) {
+				printk(KERN_INFO "DEV Module: <%s> post_handler:  pid = %8d, vertual->addr = %lx, flags = 0x%lx\n", p->symbol_name, current->pid, regs->si, regs->flags);
+			}
 		#endif
 	}
 	else {
@@ -205,18 +229,135 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
-			printk(KERN_ALERT "DEV Module: <%s> fault_handler: pid = %8d, vertual->addr = %lx, trap #%dn\n", p->symbol_name, current->pid, regs->si, trapnr);
+			if (PROBE_PRINT) {
+				printk(KERN_ALERT "DEV Module: <%s> fault_handler: pid = %8d, vertual->addr = %lx, trap #%dn\n", p->symbol_name, current->pid, regs->si, trapnr);
+			}
 		#endif
 	}
 	else {
-		printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
 		if (PROBE_DEBUG) {
-			;
+			printk(KERN_INFO "DEV Module: Process %d has called %s function of Dev Page Fault Driver\n", current->pid, __FUNCTION__);
 		}
 	}
 	/* Return 0 because we don't handle the fault. */
 	return 0;
 }
+
+
+static int find_nearest_index(long *array, long target, int range) {
+
+	int near_index = 0;
+	long near_diff = abs(array[0] - target);
+	int idx;
+	for (idx = 1; idx < range; idx++) {
+	  // Is the difference from the target value for this entry smaller than the currently recorded one?
+	  if (abs(array[idx] - target) < near_diff) {
+	    // Yes, so save the index number along with the current difference.
+	    near_index = idx;
+	    near_diff = abs(array[idx] - target);
+	  }
+	}
+	return near_index;
+}
+
+
+
+static void dev_print_chart(void) {
+
+	char char_array[30][71];
+	char char_x_axis[71];
+	char addr_str[30];
+	long addr_array[30];
+	long time_array[70];
+	long max_addr_lng;
+	long min_addr_lng;
+	long addr_lng;
+	long addr_scale;
+	long time_scale;
+
+	int row;
+	int col;
+	int idx;
+	int jdx;
+	int near_addr;
+	int near_time;
+
+	unsigned long min_address = page_fault_data_buffer[0].address;
+	unsigned long max_address = page_fault_data_buffer[0].address;
+	long min_time = page_fault_data_buffer[0].time;
+	long max_time = page_fault_data_buffer[0].time;
+
+	for (idx=0; idx<PROBE_BUFFER_SIZE; idx++) {
+		// find max address and max time
+		if (page_fault_data_buffer[idx].address > max_address) {
+			max_address = page_fault_data_buffer[idx].address;
+		}
+		if (page_fault_data_buffer[idx].time > max_time) {
+			max_time = page_fault_data_buffer[idx].time;
+		}
+		// find min address and min time
+		if (page_fault_data_buffer[idx].address != 0) {
+			if (page_fault_data_buffer[idx].address < min_address) {
+				min_address = page_fault_data_buffer[idx].address;
+			}
+		}
+		if (page_fault_data_buffer[idx].time != 0) {
+			if (page_fault_data_buffer[idx].time < min_time) {
+				min_time = page_fault_data_buffer[idx].time;
+			}
+		}
+	}
+	printk(KERN_ALERT "DEV Module: Hex Info :: pid = %8d, addr range = %lx - %lx, time range = %ld - %ld\n", process_id, min_address, max_address, min_time, max_time);
+
+	sprintf(addr_str, "%lx", max_address);
+	kstrtol(addr_str, 16, &max_addr_lng);
+
+	sprintf(addr_str, "%lx", min_address);
+	kstrtol(addr_str, 16, &min_addr_lng);
+
+	printk(KERN_INFO "DEV Module: Dec Info :: pid = %8d, addr range = %ld - %ld, time range = %ld - %ld\n", process_id, min_addr_lng, max_addr_lng, min_time, max_time);
+
+	for(idx = 0; idx < 30; idx++) {
+		for(jdx = 0; jdx < 71; jdx++) {
+			if (jdx == 70) {
+				char_array[idx][jdx] = '\0';
+			}
+			else {
+				char_array[idx][jdx] = ' ';
+			}
+		}
+	}
+
+	addr_scale = (max_addr_lng - min_addr_lng)/30;
+	for (row = 0; row < 30; row++) {
+		addr_array[row] = (max_addr_lng-(addr_scale*row));
+	}
+	time_scale = (max_time - min_time)/70;
+	for (col = 0; col < 71; col++) {
+		if (col == 70) {
+			char_x_axis[col] = '\0';
+		}
+		else {
+			time_array[col] = (max_time-(time_scale*col));
+			char_x_axis[col] = '_';
+		}
+	}
+
+	for (idx = 0; idx < PROBE_BUFFER_SIZE; idx++) {
+		sprintf(addr_str, "%lx", page_fault_data_buffer[idx].address);
+		kstrtol(addr_str, 16, &addr_lng);
+		near_addr = find_nearest_index(addr_array, addr_lng, 30);
+		near_time = find_nearest_index(time_array, page_fault_data_buffer[idx].time, 70);
+		char_array[near_addr][near_time] = '*';
+	}
+
+	for(idx = 0; idx < 30; idx++) {
+		printk(KERN_INFO "%20ld | %s\n", addr_array[idx], char_array[idx]);
+	}
+	printk(KERN_INFO "%20d # %s\n", 0, char_x_axis);
+	printk(KERN_INFO "%20d # %ld\t %ld\t %ld\t %ld\t %ld\n", 0, time_array[0], time_array[15], time_array[30], time_array[50], time_array[69]);
+}
+
 
 
 static void dev_cleanup(void) {
@@ -261,6 +402,7 @@ static int __init pf_probe_init(void) {
 
 
 static void __exit pf_probe_exit(void) {
+	dev_print_chart();
 	dev_cleanup();
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "%s Module: Removed ...\n", PROBE_NAME);
