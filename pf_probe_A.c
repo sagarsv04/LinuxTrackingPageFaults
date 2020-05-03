@@ -171,7 +171,7 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 			current_time = current_kernel_time();
 			page_fault_data_buffer[data_buffer_idx].address = regs->si;
 			page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
-			printk(KERN_INFO "DEV Module: <%s> pre_handler: probe->addr = 0x%p, vertual->addr = %lx\n", p->symbol_name, p->addr, regs->si);
+			printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
 		#endif
 	}
 	else {
@@ -189,7 +189,7 @@ static void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long f
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
-			printk(KERN_INFO "DEV Module: <%s> post_handler: p->addr = 0x%p, flags = 0x%lx\n", p->symbol_name, p->addr, regs->flags);
+			printk(KERN_INFO "DEV Module: <%s> post_handler:  pid = %8d, vertual->addr = %lx, flags = 0x%lx\n", p->symbol_name, current->pid, regs->si, regs->flags);
 		#endif
 	}
 	else {
@@ -205,7 +205,7 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 
 	if (current->pid == process_id) {
 		#ifdef CONFIG_X86
-			printk(KERN_ALERT "DEV Module: <%s> fault_handler: p->addr = 0x%p, trap #%dn\n", p->symbol_name, p->addr, trapnr);
+			printk(KERN_ALERT "DEV Module: <%s> fault_handler: pid = %8d, vertual->addr = %lx, trap #%dn\n", p->symbol_name, current->pid, regs->si, trapnr);
 		#endif
 	}
 	else {
