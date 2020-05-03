@@ -232,23 +232,29 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 
 static void dev_print_chart(void) {
 
-	unsigned long min_address = 0;
-	unsigned long max_address = 0;
-	long min_time = 0;
-	long max_time = 0;
+	unsigned long min_address = page_fault_data_buffer[0].address;
+	unsigned long max_address = page_fault_data_buffer[0].address;
+	long min_time = page_fault_data_buffer[0].time;
+	long max_time = page_fault_data_buffer[0].time;
 	int i;
 	for (i=0; i<PROBE_BUFFER_SIZE; i++) {
+		// find max address and max time
 		if (page_fault_data_buffer[i].address > max_address) {
 			max_address = page_fault_data_buffer[i].address;
-		}
-		if (page_fault_data_buffer[i].address < min_address) {
-			min_address = page_fault_data_buffer[i].address;
 		}
 		if (page_fault_data_buffer[i].time > max_time) {
 			max_time = page_fault_data_buffer[i].time;
 		}
-		if (page_fault_data_buffer[i].time < min_time) {
-			min_time = page_fault_data_buffer[i].time;
+		// find min address and min time
+		if (page_fault_data_buffer[i].address != 0) {
+			if (page_fault_data_buffer[i].address < min_address) {
+				min_address = page_fault_data_buffer[i].address;
+			}
+		}
+		if (page_fault_data_buffer[i].time != 0) {
+			if (page_fault_data_buffer[i].time < min_time) {
+				min_time = page_fault_data_buffer[i].time;
+			}
 		}
 	}
 	printk(KERN_ALERT "DEV Module: Pid :: %8d, vertual->addr range :: %lx - %lx, time range :: %ld - %ld\n", process_id, min_address, max_address, min_time, max_time);
