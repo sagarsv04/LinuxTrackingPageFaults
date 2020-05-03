@@ -64,6 +64,7 @@ static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 
 
 static void get_fault_info(char *, loff_t *);
+static void dev_print_chart(void);
 static void dev_cleanup(void);
 
 
@@ -229,6 +230,32 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 }
 
 
+static void dev_print_chart(void) {
+
+	unsigned long min_address = 0;
+	unsigned long max_address = 0;
+	long min_time = 0;
+	long max_time = 0;
+	int i;
+	for (i=0; i<PROBE_BUFFER_SIZE; i++) {
+		if (page_fault_data_buffer[i].address > max_address) {
+			max_address = page_fault_data_buffer[i].address;
+		}
+		if (page_fault_data_buffer[i].address < min_address) {
+			min_address = page_fault_data_buffer[i].address;
+		}
+		if (page_fault_data_buffer[i].time > max_time) {
+			max_time = page_fault_data_buffer[i].time;
+		}
+		if (page_fault_data_buffer[i].time < min_time) {
+			min_time = page_fault_data_buffer[i].time;
+		}
+	}
+	printk(KERN_ALERT "DEV Module: Pid :: %8d, vertual->addr range :: %lx - %lx, time range :: %ld - %ld\n", process_id, min_address, max_address, min_time, max_time);
+}
+
+
+
 static void dev_cleanup(void) {
 
 	if (dev_file_entry != NULL) {
@@ -271,6 +298,7 @@ static int __init pf_probe_init(void) {
 
 
 static void __exit pf_probe_exit(void) {
+	dev_print_chart();
 	dev_cleanup();
 	if (PROBE_DEBUG) {
 		printk(KERN_INFO "%s Module: Removed ...\n", PROBE_NAME);
