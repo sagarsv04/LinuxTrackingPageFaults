@@ -1,7 +1,7 @@
 # Make file for building application
 
 CC = gcc
-EXTRA_CFLAGS = -Wall -Werror
+EXTRA_CFLAGS = -Wall -Werror -Wframe-larger-than=4000
 
 KDIR = /lib/modules/$(shell uname -r)/build/
 # KDIR = /lib/modules/4.4.0-178-generic/build/

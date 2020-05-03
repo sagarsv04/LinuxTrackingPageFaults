@@ -65,6 +65,7 @@ static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 
 static void get_fault_info(char *, loff_t *);
 static void dev_print_chart(void);
+static int find_nearest_index(long *, long, int);
 static void dev_cleanup(void);
 
 
@@ -230,34 +231,107 @@ static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr) {
 }
 
 
+static int find_nearest_index(long *array, long target, int range) {
+
+	int near_index = 0;
+	long near_diff = abs(array[0] - target);
+	int idx;
+	for (idx = 1; idx < range; idx++) {
+	  // Is the difference from the target value for this entry smaller than the currently recorded one?
+	  if (abs(array[idx] - target) < near_diff) {
+	    // Yes, so save the index number along with the current difference.
+	    near_index = idx;
+	    near_diff = abs(array[idx] - target);
+	  }
+	}
+	return near_index;
+}
+
+
+
 static void dev_print_chart(void) {
+
+	char char_array[30][71];
+	char char_x_axis[71];
+	char addr_str[30];
+	long addr_array[30];
+	long time_array[70];
+	long addr_lng;
+
+	int row;
+	int col;
+	int idx;
+	int jdx;
+	int near_addr;
+	int near_time;
 
 	unsigned long min_address = page_fault_data_buffer[0].address;
 	unsigned long max_address = page_fault_data_buffer[0].address;
 	long min_time = page_fault_data_buffer[0].time;
 	long max_time = page_fault_data_buffer[0].time;
-	int i;
-	for (i=0; i<PROBE_BUFFER_SIZE; i++) {
+
+	for (idx=0; idx<PROBE_BUFFER_SIZE; idx++) {
 		// find max address and max time
-		if (page_fault_data_buffer[i].address > max_address) {
-			max_address = page_fault_data_buffer[i].address;
+		if (page_fault_data_buffer[idx].address > max_address) {
+			max_address = page_fault_data_buffer[idx].address;
 		}
-		if (page_fault_data_buffer[i].time > max_time) {
-			max_time = page_fault_data_buffer[i].time;
+		if (page_fault_data_buffer[idx].time > max_time) {
+			max_time = page_fault_data_buffer[idx].time;
 		}
 		// find min address and min time
-		if (page_fault_data_buffer[i].address != 0) {
-			if (page_fault_data_buffer[i].address < min_address) {
-				min_address = page_fault_data_buffer[i].address;
+		if (page_fault_data_buffer[idx].address != 0) {
+			if (page_fault_data_buffer[idx].address < min_address) {
+				min_address = page_fault_data_buffer[idx].address;
 			}
 		}
-		if (page_fault_data_buffer[i].time != 0) {
-			if (page_fault_data_buffer[i].time < min_time) {
-				min_time = page_fault_data_buffer[i].time;
+		if (page_fault_data_buffer[idx].time != 0) {
+			if (page_fault_data_buffer[idx].time < min_time) {
+				min_time = page_fault_data_buffer[idx].time;
 			}
 		}
 	}
 	printk(KERN_ALERT "DEV Module: Pid :: %8d, vertual->addr range :: %lx - %lx, time range :: %ld - %ld\n", process_id, min_address, max_address, min_time, max_time);
+
+	sprintf(addr_str, "%lx", max_address);
+	kstrtol(addr_str, 16, &addr_lng);
+
+	for(idx = 0; idx < 30; idx++) {
+		for(jdx = 0; jdx < 71; jdx++) {
+			if (jdx == 70) {
+				char_array[idx][jdx] = '\0';
+			}
+			else {
+				char_array[idx][jdx] = ' ';
+			}
+		}
+	}
+
+	for (row = 0; row < 30; row++) {
+		addr_array[row] = addr_lng/(row+1);
+	}
+	for (col = 0; col < 71; col++) {
+		if (col == 70) {
+			char_x_axis[col] = '\0';
+		}
+		else {
+			time_array[col] = max_time/(col+1);
+			char_x_axis[col] = '_';
+		}
+	}
+
+	for (idx = 0; idx < PROBE_BUFFER_SIZE; idx++) {
+		sprintf(addr_str, "%lx", page_fault_data_buffer[idx].address);
+		kstrtol(addr_str, 16, &addr_lng);
+		near_addr = find_nearest_index(addr_array, addr_lng, 30);
+		near_time = find_nearest_index(time_array, page_fault_data_buffer[idx].time, 70);
+		char_array[near_addr][near_time] = '*';
+	}
+
+	for(idx = 0; idx < 30; idx++) {
+		printk(KERN_INFO "%10ld | %s\n", addr_array[idx], char_array[idx]);
+	}
+	printk(KERN_INFO "%10d # %s\n", 0, char_x_axis);
+	printk(KERN_INFO "%10d # %ld\t %ld\t %ld\t %ld\t %ld\n", 0, time_array[0], time_array[15], time_array[30], time_array[50], time_array[69]);
 }
 
 
