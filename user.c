@@ -34,6 +34,7 @@ int main(int argc, char const *argv[]) {
 
 	ssize_t read;
 	size_t len = 0;
+	int count = 0;
 	FILE *file;
 	char *line = NULL;
 
@@ -59,7 +60,8 @@ int main(int argc, char const *argv[]) {
 			else {
 				pid_t pid = getpid();
 				if (strcmp(line, "EXIT_CODE\n")!=0) {
-					printf("-:: %s", line);
+					printf("%4d:: %s", count, line);
+					count += 1;
 					if (USER_DEBUG) {
 						printf("Process %d sleeping for %d msec.\n", pid, USER_SLEEP);
 					}

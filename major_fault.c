@@ -49,10 +49,12 @@ int main(void) {
 		for (int i = 0; i < 1024; ++i) {
 			ptr[i * 1024 * 1024] = 0;     /* touch the pages */
 		}
-		sleep(0.5);
-		// free(ptr);
+		sleep(1);
+		free(ptr);
 	}
-	free(ptr);
+  if (ptr) {
+    free(ptr);
+  }
 	printf("Bye ...\n");
 	return 0;
 }

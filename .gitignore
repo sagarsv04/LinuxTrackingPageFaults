@@ -43,6 +43,7 @@
 *.pdb
 *.log
 major_fault
+user
 
 # Kernel Module Compile Results
 *.mod*
