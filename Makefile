@@ -16,7 +16,8 @@ all:
 	make -C $(KDIR) M=$(PWD) modules
 	# $(CC) user.c $(EXTRA_CFLAGS) -o user
 	$(CC) major_fault.c $(EXTRA_CFLAGS) -o major_fault
+	$(CC) user.c $(EXTRA_CFLAGS) -o user
 
 clean:
 	make -C $(KDIR) M=$(PWD) clean
-	rm -f *.o *.d major_fault
+	rm -f *.o *.d major_fault user
