@@ -23,6 +23,7 @@ MODULE_VERSION("1.0");
 
 #define PROBE_DEBUG 0
 #define PROBE_PRINT 1 // on while submiting the code
+#define CONT_STORE 0
 
 #define PROBE_NAME "pf_probe_A"
 
@@ -161,21 +162,33 @@ static ssize_t dev_read(struct file *pfile, char __user *buffer, size_t length, 
 /* kprobe pre_handler: called just before the probed instruction is executed */
 static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 
-	struct timespec current_time;
+	// struct timespec current_time;
+	ktime_t current_time;
 
 	if (current->pid == process_id) {
 
 		#ifdef CONFIG_X86
-
-			if(data_buffer_idx == PROBE_BUFFER_SIZE-1) {
-				data_buffer_idx = 0;
+			// current_time = current_kernel_time();
+			current_time = ktime_get();
+			if (CONT_STORE) {
+				if(data_buffer_idx == PROBE_BUFFER_SIZE) {
+					data_buffer_idx = 0;
+				}
+				else {
+					page_fault_data_buffer[data_buffer_idx].address = regs->si;
+					// page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+					page_fault_data_buffer[data_buffer_idx].time = (long)ktime_to_ns(current_time);
+					data_buffer_idx += 1;
+				}
 			}
 			else {
-				data_buffer_idx += 1;
+				if(data_buffer_idx != PROBE_BUFFER_SIZE) {
+					page_fault_data_buffer[data_buffer_idx].address = regs->si;
+					// page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
+					page_fault_data_buffer[data_buffer_idx].time = (long)ktime_to_ns(current_time);
+					data_buffer_idx += 1;
+				}
 			}
-			current_time = current_kernel_time();
-			page_fault_data_buffer[data_buffer_idx].address = regs->si;
-			page_fault_data_buffer[data_buffer_idx].time = current_time.tv_nsec;
 			if (PROBE_PRINT) {
 				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
 			}

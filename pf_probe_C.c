@@ -23,7 +23,7 @@ MODULE_VERSION("1.0");
 
 #define PROBE_DEBUG 0
 #define PROBE_PRINT 0 // off while submiting the code
-#define PROBE_CONT_STORE 0
+#define CONT_STORE 0
 
 #define PROBE_NAME "pf_probe_C"
 
@@ -172,7 +172,7 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 		#ifdef CONFIG_X86
 			// current_time = current_kernel_time();
 			current_time = ktime_get();
-			if (PROBE_CONT_STORE) {
+			if (CONT_STORE) {
 				if(data_buffer_idx == PROBE_BUFFER_SIZE) {
 					data_buffer_idx = 0;
 				}

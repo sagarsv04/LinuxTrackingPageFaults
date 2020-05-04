@@ -8,9 +8,9 @@ KDIR = /lib/modules/$(shell uname -r)/build/
 
 # obj-m += kprobe_example.o
 # obj-m += kretprobe_example.o
-# obj-m += pf_probe_A.o
+obj-m += pf_probe_A.o
 obj-m += pf_probe_B.o
-# obj-m += pf_probe_C.o
+obj-m += pf_probe_C.o
 
 all:
 	make -C $(KDIR) M=$(PWD) modules
