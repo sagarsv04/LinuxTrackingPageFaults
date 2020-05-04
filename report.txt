@@ -12,13 +12,14 @@ Image :: "./out/pf_probe_B.png"
 - When the I/O operation is complete, the process’s page table is updated with the new frame number, and the invalid bit is changed to indicate that this is now a valid page reference.
 - The instruction that caused the page fault must now be restarted from the beginning.
 
-- Todays applications requires data that are more than 4k or than can fit in one page.
-- When a page fault occurs at a memory location there are more subsequent page faults as well as can be seen in the image.
-- Now if the page fault occurs at a base page the above pattern may not be true as one base page can store entries of many pages in next level,
+- Some User level applications requires data that are more than 4k or that can fit in one page.
+  When page fault occurs for such application for a memory location there are more subsequent page faults as well as can be seen in the image.
+- If the page fault occurs at a last page table the above pattern may not be true as there might be only one missing entry,
   which can also be seen as some time when page fault occur there are no subsequent page faults and single page is updated.
 
 - Also virtual address space can't be modified since applications hold pointers into it.
   If an application tries to refer a pointer into a page that has been moved out of memory,
   the operating system then has to start the swapping process to get the page back in. That's why the CPU to generates a page fault.
 
+- System level faults occurs at a lower address space while the User level faults occurs at higher address space.
 - System level faults occurs at a lower address space while the User level faults occurs at higher address space.
