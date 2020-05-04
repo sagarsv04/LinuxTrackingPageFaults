@@ -22,4 +22,4 @@ Image :: "./out/pf_probe_B.png"
   the operating system then has to start the swapping process to get the page back in. That's why the CPU to generates a page fault.
 
 - System level faults occurs at a lower address space while the User level faults occurs at higher address space.
-- System level faults occurs at a lower address space while the User level faults occurs at higher address space.
+- Some of the root level process generates very few faults unlike active user level process.
