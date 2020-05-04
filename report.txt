@@ -14,8 +14,10 @@ Image :: "./out/pf_probe_B.png"
 
 - Some User level applications requires data that are more than 4k or that can fit in one page.
   When page fault occurs for such application for a memory location there are more subsequent page faults as well as can be seen in the image.
+- This are major page faults as it causes subsequent page updates.
 - If the page fault occurs at a last page table the above pattern may not be true as there might be only one missing entry,
   which can also be seen as some time when page fault occur there are no subsequent page faults and single page is updated.
+- This are minor page faults as it doesn't causes subsequent page updates.
 
 - Also virtual address space can't be modified since applications hold pointers into it.
   If an application tries to refer a pointer into a page that has been moved out of memory,
