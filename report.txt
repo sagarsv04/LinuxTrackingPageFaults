@@ -19,6 +19,6 @@ Image :: "./out/pf_probe_B.png"
 
 - Also virtual address space can't be modified since applications hold pointers into it.
   If an application tries to refer a pointer into a page that has been moved out of memory,
-  the operating system then has to start the swaping process to get the page back in. That's why the CPU  to generates a page fault.
+  the operating system then has to start the swapping process to get the page back in. That's why the CPU to generates a page fault.
 
 - System level faults occurs at a lower address space while the User level faults occurs at higher address space.
