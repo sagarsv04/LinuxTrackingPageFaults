@@ -190,7 +190,7 @@ static int handler_pre(struct kprobe *p, struct pt_regs *regs) {
 				}
 			}
 			if (PROBE_PRINT) {
-				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, current_time.tv_nsec);
+				printk(KERN_INFO "DEV Module: <%s> pre_handler:   pid = %8d, vertual->addr = %lx, time = %ld\n", p->symbol_name, current->pid, regs->si, (long)ktime_to_ns(current_time));
 			}
 		#endif
 	}
